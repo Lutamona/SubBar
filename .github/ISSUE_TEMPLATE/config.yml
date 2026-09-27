@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Инструкция для ИИ-агента
+    url: https://github.com/Lutamona/SubBar/blob/main/docs/FOR-AI.md
+    about: Ставишь через Claude Code или Cursor — начни отсюда

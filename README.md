@@ -9,7 +9,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F0703F?style=flat-square" alt="Лицензия MIT"></a>
 </p>
 
-**Поставить за минуту** — вставь в Терминал (дальше [по шагам](#установка)):
+[English](README.en.md) · **Поставить за минуту** — вставь в Терминал (дальше [по шагам](#установка)):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Lutamona/SubBar/main/scripts/get.sh | bash
