@@ -1,0 +1,10 @@
+target/
+dist/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+# внутренние заметки разработки — не для публики
+docs/plan.md
+docs/design.md
+docs/design/

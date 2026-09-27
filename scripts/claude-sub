@@ -1,0 +1,119 @@
+#!/bin/sh
+# claude-sub — Claude Code через прокси SubBar: основная модель на подписке,
+# субагенты (haiku/sonnet) на модели OpenCode Go, выбранной в SubBar.
+# Прокси не отвечает — предупреждаем и запускаем обычного Claude (работу не блокируем).
+# Основной модели добавляется подсказка, что субагенты haiku — дешёвые воркеры OpenCode
+# (без неё она их почти не зовёт). Отключить: SUBBAR_HINT=0 claude-sub.
+# Путь к конфигу — как у службы: из её plist (туда его впечатало окно), иначе из окружения.
+PLIST="$HOME/Library/LaunchAgents/ai.subbar.proxy.plist"
+P_CONF=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:SUBBAR_PROXY_CONFIG" "$PLIST" 2>/dev/null)
+P_DATA=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:LIMITBAR_DATA_DIR" "$PLIST" 2>/dev/null)
+if [ -n "$P_CONF" ]; then CONF="$P_CONF"
+elif [ -n "$P_DATA" ]; then CONF="$P_DATA/proxy.json"
+else CONF="${SUBBAR_PROXY_CONFIG:-${LIMITBAR_DATA_DIR:-$HOME/Library/Application Support/SubBar}/proxy.json}"
+fi
+conf() { command -v jq >/dev/null 2>&1 && jq -r "$1" "$CONF" 2>/dev/null; }
+# Порт: jq — основной источник; grep-запас только если jq нет или ключа нет в файле.
+PORT=$(conf '.port // empty')
+case "$PORT" in ''|*[!0-9]*)
+  # Запас без jq: первое вхождение ключа "port" (сегодня конфиг плоский; порт бывает и строкой — "8479").
+  PORT=$(grep -oE '"port"[[:space:]]*:[[:space:]]*"?[0-9]+' "$CONF" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' | head -n 1 || true)
+  ;;
+esac
+case "$PORT" in ''|*[!0-9]*) PORT=8479 ;; esac
+command -v claude >/dev/null 2>&1 || { echo "claude не найден в PATH" >&2; exit 127; }
+command -v curl >/dev/null 2>&1 || { echo "curl не найден в PATH — без него прокси не проверить" >&2; exit 127; }
+# Именно наш прокси (а не чужой сервис на порту — туда ушёл бы OAuth-токен Claude Code).
+STATUS=""
+has() { case "$STATUS" in *"$1"*) true ;; *) false ;; esac; }
+# Порядок полей в JSON не важен: проверяем каждое отдельно.
+# Похожий JSON может отдать кто угодно — сверяем, что pid из ответа принадлежит бинарю SubBar.
+ours() {
+  pid=$(printf '%s' "$STATUS" | grep -o '"pid":[0-9]*' | head -n 1 | cut -d: -f2 || true)
+  # Имя бинаря целиком, а не подстрока пути: «~/dev/subbar-x/bin/tool» — не наш прокси.
+  [ -n "$pid" ] && case "$(ps -p "$pid" -o comm= 2>/dev/null)" in */SubBar.app/Contents/MacOS/SubBar|*/target/*/subbar|*/bin/subbar) true ;; *) false ;; esac
+}
+alive() { STATUS=$(curl -sf -m 1 --noproxy "*" "http://127.0.0.1:$PORT/_subbar/status" 2>/dev/null) && has '"ok":true' && has '"inflight":' && has '"uptimeSec":' && ! has '"draining":true' && ours; }
+
+via_proxy=0
+# Сколько раз по 0,5 с ждать: служба поднимается или дренируется — 20 с; лежит только plist
+# (служба выгружена, kickstart не прошёл) — 3 с, чтобы не молчать 20 с перед обычным Claude.
+tries=40
+if alive; then
+  via_proxy=1
+elif launchctl kickstart "gui/$(id -u)/ai.subbar.proxy" >/dev/null 2>&1 \
+  || { [ -f "$HOME/Library/LaunchAgents/ai.subbar.proxy.plist" ] \
+       && launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/ai.subbar.proxy.plist" >/dev/null 2>&1; } \
+  || has '"draining":true' \
+  || { [ -f "$HOME/Library/LaunchAgents/ai.subbar.proxy.plist" ] && tries=6; }; then
+  # Ждём и когда прокси доделывает старое (перезапуск), и когда установка на миг сняла службу:
+  # иначе claude уйдёт на подписку, хотя через пару секунд прокси снова здесь.
+  # Недавно упавшую службу launchd поднимает не сразу (ThrottleInterval 5 с), плюс запуск и
+  # первый ответ — до 20 с. 3 с хватало не всегда: промах → тихий уход на подписку.
+  # Дренаж старого процесса длится до 50 с (SUBBAR_DRAIN_MS) — ждём его целиком, а не уходим на подписку.
+  # Плюс перезапуск launchd и первый ответ нового — окно с запасом над 50 с.
+  has '"draining":true' && tries=180
+  # Сменили порт: старый процесс дренирует на СТАРОМ порту (здесь пусто), служба при этом жива —
+  # новый встанет только после его выхода, до 50 с. Ждём так же, как при видимом дренаже.
+  launchctl print "gui/$(id -u)/ai.subbar.proxy" 2>/dev/null | grep -q 'state = running' && tries=180
+  [ "$tries" -gt 6 ] && echo "SubBar: жду прокси на :$PORT (до $(( (tries + 1) / 2 )) с)…" >&2
+  # По часам, а не по итерациям: curl -m 1 растягивал «20 с» до минуты.
+  deadline=$(( $(date +%s) + (tries + 1) / 2 ))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    sleep 0.5
+    if alive; then via_proxy=1; break; fi
+  done
+fi
+if [ "$via_proxy" = 1 ]; then
+  export ANTHROPIC_BASE_URL="http://127.0.0.1:$PORT"
+else
+  echo "⚠ SubBar: прокси не отвечает на :$PORT — запускаю обычный Claude (субагенты на настоящих моделях Claude)" >&2
+  # Уведомление macOS, если есть osascript: в фоне, запуск Claude не ждёт.
+  if command -v osascript >/dev/null 2>&1; then
+    ( osascript -e 'display notification "Прокси SubBar не отвечает — Claude запущен без подмены, субагенты на настоящих моделях Claude" with title "SubBar"' >/dev/null 2>&1 & )
+  fi
+  # Унаследованный адрес локального (мёртвого) прокси — убрать, иначе Claude не стартует.
+  # Любой порт (в т.ч. без порта): после смены порта в окружении мог остаться старый.
+  # Сравниваем в нижнем регистре: адрес мог достаться в верхнем. Скобки [::1] экранированы.
+  case "$(printf '%s' "${ANTHROPIC_BASE_URL:-}" | tr '[:upper:]' '[:lower:]')" in
+    http://127.0.0.1|http://127.0.0.1[:/]*|http://localhost|http://localhost[:/]*|http://\[::1\]|http://\[::1\][:/]*) unset ANTHROPIC_BASE_URL ;;
+    https://127.0.0.1|https://127.0.0.1[:/]*|https://localhost|https://localhost[:/]*|https://\[::1\]|https://\[::1\][:/]*) unset ANTHROPIC_BASE_URL ;;
+  esac
+fi
+
+hint=$via_proxy
+[ "${SUBBAR_HINT:-1}" = "0" ] && hint=0
+# Что реально делает прокси — из его статуса (jq не нужен): выключен, без ключа или haiku не подменяет —
+# значит haiku останется настоящим, звать его как бесплатного нельзя.
+case "$STATUS" in *'"enabled":false'*|*'"hasKey":false'*) hint=0 ;; esac
+printf '%s' "$STATUS" | grep -qi '"matchModels":"[^"]*haiku' || hint=0
+# Подменяется ли и sonnet («кого подменять: haiku и sonnet») — тогда в подсказке обе модели.
+sonnet=0
+printf '%s' "$STATUS" | grep -qi '"matchModels":"[^"]*sonnet' && sonnet=1
+prev=""
+# Модель из окружения — то же, что --model.
+case "${ANTHROPIC_MODEL:-}" in *[Hh]aiku*) hint=0 ;; *[Ss]onnet*) [ "$sonnet" = 1 ] && hint=0 ;; esac
+for arg in "$@"; do
+  # Регистр модели не важен: «--model Haiku» — та же haiku, что и в ANTHROPIC_MODEL.
+  arg=$(printf '%s' "$arg" | tr '[:upper:]' '[:lower:]')
+  case "$arg" in --system-prompt*|--append-system-prompt*) hint=0 ;; esac # свой системный промпт — не мешаем
+  # Основная сессия сама на подменяемой модели — она и так уедет в OpenCode, подсказка «субагенты дешевле тебя» соврёт.
+  case "$prev|$arg" in --model\|*haiku*|-m\|*haiku*|*--model=*haiku*|*\|-m*haiku*) hint=0 ;; esac
+  [ "$sonnet" = 1 ] && case "$prev|$arg" in --model\|*sonnet*|-m\|*sonnet*|*--model=*sonnet*|*\|-m*sonnet*) hint=0 ;; esac
+  prev=$arg
+done
+if [ "$hint" = 1 ]; then
+  # Модель — из живого статуса прокси (он может разойтись с файлом), файл — запасной.
+  MODEL=$(printf '%s' "$STATUS" | grep -o '"model":"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+  [ -n "$MODEL" ] || MODEL=$(conf '.model')
+  case "$MODEL" in ''|null) MODEL="выбранная в SubBar" ;; esac
+  if [ "$sonnet" = 1 ]; then
+    WHO='model: "haiku" или model: "sonnet"'
+    HOW='model: "haiku" (рутина) или model: "sonnet" (задачи посложнее)'
+  else
+    WHO='model: "haiku"'
+    HOW='model: "haiku" (sonnet НЕ подменяется — он тратит подписку)'
+  fi
+  exec claude --append-system-prompt "SubBar: в этой сессии субагентов с $WHO исполняет модель OpenCode Go ($MODEL) через прокси SubBar — подписку Claude они не тратят и хорошо работают параллельно. Объёмную рутину — поиск и чтение по коду, сбор фактов, однотипные правки, прогоны и проверки — отдавай им: инструмент Agent с $HOW и самодостаточной задачей (пути, что сделать, критерий готовности, формат отчёта). Решения, архитектуру и финальную проверку оставляй себе; выводы субагентов перепроверяй по фактам." "$@"
+fi
+exec claude "$@"
