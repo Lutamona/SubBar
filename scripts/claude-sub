@@ -7,10 +7,10 @@
 # Путь к конфигу — как у службы: из её plist (туда его впечатало окно), иначе из окружения.
 PLIST="$HOME/Library/LaunchAgents/ai.subbar.proxy.plist"
 P_CONF=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:SUBBAR_PROXY_CONFIG" "$PLIST" 2>/dev/null)
-P_DATA=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:LIMITBAR_DATA_DIR" "$PLIST" 2>/dev/null)
+P_DATA=$(/usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:SUBBAR_DATA_DIR" "$PLIST" 2>/dev/null)
 if [ -n "$P_CONF" ]; then CONF="$P_CONF"
 elif [ -n "$P_DATA" ]; then CONF="$P_DATA/proxy.json"
-else CONF="${SUBBAR_PROXY_CONFIG:-${LIMITBAR_DATA_DIR:-$HOME/Library/Application Support/SubBar}/proxy.json}"
+else CONF="${SUBBAR_PROXY_CONFIG:-${SUBBAR_DATA_DIR:-$HOME/Library/Application Support/SubBar}/proxy.json}"
 fi
 conf() { command -v jq >/dev/null 2>&1 && jq -r "$1" "$CONF" 2>/dev/null; }
 # Порт: jq — основной источник; grep-запас только если jq нет или ключа нет в файле.

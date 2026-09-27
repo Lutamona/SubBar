@@ -10,7 +10,7 @@ struct TestDir(PathBuf);
 impl TestDir {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!(
-            "limitbar-store-test-{}-{}",
+            "subbar-store-test-{}-{}",
             std::process::id(),
             NEXT_DIR.fetch_add(1, Ordering::Relaxed)
         ));
@@ -24,7 +24,7 @@ impl TestDir {
     fn cli(&self, args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_subbar"))
             .args(args)
-            .env("LIMITBAR_DATA_DIR", &self.0)
+            .env("SUBBAR_DATA_DIR", &self.0)
             .output()
             .expect("run isolated CLI")
     }
@@ -85,7 +85,7 @@ fn concurrent_cli_writers_do_not_lose_accounts() {
         writers.push(
             Command::new(env!("CARGO_BIN_EXE_subbar"))
                 .args(["add", "codex", &format!("Synthetic-{i}")])
-                .env("LIMITBAR_DATA_DIR", &dir.0)
+                .env("SUBBAR_DATA_DIR", &dir.0)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()
@@ -114,7 +114,7 @@ fn parallel_removal_does_not_erase_new_accounts() {
     writers.push(
         Command::new(env!("CARGO_BIN_EXE_subbar"))
             .args(["remove", "Old"])
-            .env("LIMITBAR_DATA_DIR", &dir.0)
+            .env("SUBBAR_DATA_DIR", &dir.0)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -124,7 +124,7 @@ fn parallel_removal_does_not_erase_new_accounts() {
         writers.push(
             Command::new(env!("CARGO_BIN_EXE_subbar"))
                 .args(["add", "codex", &format!("New-{i}")])
-                .env("LIMITBAR_DATA_DIR", &dir.0)
+                .env("SUBBAR_DATA_DIR", &dir.0)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()
@@ -199,7 +199,7 @@ fn lock_failure_must_not_be_treated_as_empty_state() {
     fs::write(&not_a_directory, "synthetic").unwrap();
     let result = Command::new(env!("CARGO_BIN_EXE_subbar"))
         .arg("accounts")
-        .env("LIMITBAR_DATA_DIR", not_a_directory)
+        .env("SUBBAR_DATA_DIR", not_a_directory)
         .output()
         .unwrap();
     assert_eq!(result.status.code(), Some(1));

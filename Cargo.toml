@@ -1,6 +1,6 @@
 [package]
 name = "subbar"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 description = "Claude Code subagents on OpenCode Go models + subscription limits in the macOS menu bar"
 

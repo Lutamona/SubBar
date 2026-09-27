@@ -15,7 +15,8 @@
 - **Модель**: `deepseek-v4.1-flash`, `space-bunny-free`, `muse-spark-1.3-contributor`; **Размышление**: как просит
   Claude / low / high / max (у muse `max` нет — уходит `xhigh`); **«Проверить»** — крошечный запрос через прокси:
   «✓ Отвечает за 1,2 с · OpenCode #4 · «ок»». Проверка идёт сама при открытии экрана (не чаще раза в 10 минут).
-- **Ключи OpenCode Go** — весь запас строками: кружок — основной ключ (клик по строке — сделать основным), статус
+- **Ключи OpenCode Go** — весь запас строками: кружок — основной ключ (клик по строке — сделать основным; пока основного
+  нет, им сам становится первый добавленный), статус
   («основной · в работе», «запас · следующий» — куда уйдёт ротация, «запас», «пауза · ещё 1д 3ч», «сброс через 1д 3ч»
   у исчерпанного, «карточка выключена»), остаток самого тесного окна с полоской; все окна — в подсказке строки.
   Под списком — **«Кончился лимит — брать следующий ключ»**: исчерпанный ключ уходит на паузу до сброса (срок из
@@ -85,17 +86,30 @@ subbar proxy-service on|off|restart      # служба прокси; restart �
 
 ## Установка
 
-Для сборки нужны macOS 13+, Rust/Cargo и Node.js (генерация иконки).
+Готовое приложение из последнего релиза (macOS 13+, Apple Silicon и Intel), без Rust и Xcode:
 
 ```bash
-cd SubBar
-./scripts/make-app.sh          # соберёт dist/SubBar.app
-open dist/SubBar.app
+curl -fsSL https://raw.githubusercontent.com/Lutamona/SubBar/main/scripts/get.sh | bash
 ```
 
-Чтобы установить или обновить приложение в `/Applications`, запусти `./scripts/install.sh`: он перезапустит
-окно, мягко перезапустит службу прокси (начатые запросы доделает) и проверит, что отвечает новая версия.
-При первом запуске SubBar сам добавляет карточку Claude (из входа Claude Code).
+`get.sh` скачивает `SubBar.zip` и `install.sh` той же версии, сверяет SHA-256 и зовёт `install.sh --app`. Обновление —
+та же строка. Скачал архив руками — `./scripts/install.sh --app путь/SubBar.app` из клона репозитория.
+
+Из исходников нужны Command Line Tools (`xcode-select --install`) и Rust/Cargo:
+
+```bash
+./scripts/make-app.sh          # соберёт dist/SubBar.app (--universal — Apple Silicon + Intel одним бинарём)
+./scripts/install.sh           # соберёт и поставит в /Applications
+```
+
+`install.sh` перезапустит окно, мягко перезапустит службу прокси (начатые запросы доделает) и проверит, что отвечает
+новая версия; `~/.local/bin` нет в PATH — допишет его в `~/.zshrc` (у bash — в `~/.bash_profile`).
+При первом запуске SubBar сам добавляет карточку Claude (из входа Claude Code). Первая карточка OpenCode Go сама
+становится основным ключом субагентов, а заодно встаёт служба прокси — если её не выключали руками: переключатель
+«Прокси как служба» и `proxy-service off` оставляют метку `.proxy-service-off` рядом с `proxy.json`, включение её снимает.
+
+Релиз (нужен `gh` с правом записи): подними `version` в `Cargo.toml`, закоммить и запусти `./scripts/release.sh` —
+универсальная сборка, `SubBar.zip` с контрольной суммой, тег `v<версия>` и релиз на GitHub.
 
 В менюбаре — по кольцу на каждое окно лимита (до трёх, в том же порядке, что в карточке: 5ч, 7д, 30д): дуга —
 доля, число внутри — остаток (или расход) в процентах. Показывается **верхний из закреплённых** аккаунтов, а если
@@ -185,16 +199,17 @@ open dist/SubBar.app
 включить командой `link-claude <id|имя>`; вручную введённые токены без этой команды не
 подменяются. Если изменить токен в форме, привязка отключится.
 
-Полезные переменные: `LIMITBAR_DATA_DIR` (другой каталог состояния), `LIMITBAR_SCREEN=form|settings|proxy`,
-`LIMITBAR_OPEN_ON_START=1` (сразу открыть попап — удобно для скриншотов), `SUBBAR_PROXY_CONFIG` (другой `proxy.json`),
+Полезные переменные: `SUBBAR_DATA_DIR` (другой каталог состояния), `SUBBAR_SCREEN=form|settings|proxy`,
+`SUBBAR_OPEN_ON_START=1` (сразу открыть попап — удобно для скриншотов), `SUBBAR_NO_REFRESH=1` (не опрашивать
+сервисы при запуске — снимки на подставных данных), `SUBBAR_PROXY_CONFIG` (другой `proxy.json`),
 `CLAUDE_CONFIG_DIR` (где искать `settings.json` Claude Code), `CODEX_HOME` (каталог Codex). Для тестов прокси:
 `SUBBAR_HEADERS_MS`, `SUBBAR_PING_MS`, `SUBBAR_SILENCE_MS`, `SUBBAR_RETRY_MS`, `SUBBAR_DRAIN_MS` (тайминги),
 `SUBBAR_ALLOW_PORT0`, `SUBBAR_TPS`.
 
-Проверка живых экранов (только отладочная сборка): `LIMITBAR_NATIVE_SELF_TEST=form|list` вместе с
-`LIMITBAR_OPEN_ON_START=1` открывает попап, прогоняет жизненный цикл формы или списка и выходит с
+Проверка живых экранов (только отладочная сборка): `SUBBAR_NATIVE_SELF_TEST=form|list` вместе с
+`SUBBAR_OPEN_ON_START=1` открывает попап, прогоняет жизненный цикл формы или списка и выходит с
 «native … lifecycle: PASS» (код 0) или FAIL. Работает только на своём каталоге данных вида
-`$TMPDIR/limitbar-native-selftest.XXXX` (`LIMITBAR_DATA_DIR`) — на настоящих данных откажется.
+`$TMPDIR/subbar-native-selftest.XXXX` (`SUBBAR_DATA_DIR`) — на настоящих данных откажется.
 
 ## Живые тесты подмены
 
@@ -227,7 +242,7 @@ Pillow (`pip3 install pillow`).
 cargo build            # debug
 cargo test             # юнит-тесты + сквозные тесты прокси на фейковых Anthropic/OpenCode
 cargo build --release  # релиз (lto, strip, ~2,7 MB)
-./scripts/make-app.sh  # .app с иконкой и Info.plist (LSUIElement)
+./scripts/make-app.sh  # .app с иконкой и Info.plist (LSUIElement); --universal — arm64 + x86_64
 ```
 
 Структура:
@@ -247,7 +262,9 @@ tests/proxy_e2e.rs     настоящий бинарь прокси между �
 tests/store_safety.rs  state.json: замок, битый файл, права
 tests/fixtures/        образцы ответов провайдеров
 tests/live/            живые тесты подмены (live.py)
-scripts/               make-app.sh, install.sh, claude-sub, make-icons.mjs (иконка приложения)
+scripts/               make-app.sh, install.sh, get.sh (установка из релиза), release.sh, claude-sub
+assets/                icon.svg — исходник иконки, icon.png — 1024×1024 для сборки
+docs/images/           картинки README
 ```
 
 ## Известные ограничения

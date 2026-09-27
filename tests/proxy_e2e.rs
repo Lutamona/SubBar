@@ -172,7 +172,7 @@ fn spawn_in(dir: &std::path::Path, cfg: Value, env: &[(&str, &str)]) -> Proxy {
     std::fs::write(&path, cfg.to_string()).unwrap();
     std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_subbar"));
-    cmd.args(["proxy", "--config", path.to_str().unwrap()]).env("LIMITBAR_DATA_DIR", &data).stderr(Stdio::piped());
+    cmd.args(["proxy", "--config", path.to_str().unwrap()]).env("SUBBAR_DATA_DIR", &data).stderr(Stdio::piped());
     // Повторы при временном сбое — без настоящих полсекунды ожидания.
     cmd.env("SUBBAR_RETRY_MS", "20").env("SUBBAR_ALLOW_PORT0", "1");
     for (k, v) in env {

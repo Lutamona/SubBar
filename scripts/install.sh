@@ -1,8 +1,26 @@
 #!/bin/bash
 # Builds and installs SubBar into /Applications, then restarts it.
+# --app путь/SubBar.app — поставить готовое приложение (релиз с GitHub, scripts/get.sh) без сборки.
 # Окно и служба прокси — один бинарь, но разные процессы: окно — без аргументов,
 # служба — «SubBar proxy». Окно перезапускаем, службу — мягко (доделает начатые запросы).
 set -euo pipefail
+
+SRC_APP=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --app)
+      [ $# -ge 2 ] || { echo "--app: укажи путь к SubBar.app" >&2; exit 2; }
+      SRC_APP="$2"
+      shift 2
+      ;;
+    *) echo "Неизвестный аргумент: $1 (есть только --app путь/SubBar.app)" >&2; exit 2 ;;
+  esac
+done
+if [ -n "$SRC_APP" ]; then
+  [ -f "$SRC_APP/Contents/Info.plist" ] || { echo "$SRC_APP — не приложение SubBar" >&2; exit 2; }
+  # Абсолютный путь: ниже переходим в корень репозитория.
+  SRC_APP="$(cd "$(dirname "$SRC_APP")" && pwd)/$(basename "$SRC_APP")"
+fi
 cd "$(dirname "$0")/.."
 
 # Одна установка за раз: две параллельные отнимали друг у друга бандл в /Applications
@@ -26,12 +44,16 @@ trap release_lock EXIT
 # EXIT при kill/Ctrl-C bash не зовёт — сигнал переводим в обычный выход, и откат отрабатывает.
 trap 'exit 130' INT TERM HUP
 
-./scripts/make-app.sh
-
-# awk дочитывает до конца: head под pipefail ронял бы скрипт SIGPIPE-ом, будь строк version две.
-VERSION="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | awk 'NR == 1')"
+if [ -n "$SRC_APP" ]; then
+  VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$SRC_APP/Contents/Info.plist" 2>/dev/null || true)"
+else
+  ./scripts/make-app.sh
+  SRC_APP="$PWD/dist/SubBar.app"
+  # awk дочитывает до конца: head под pipefail ронял бы скрипт SIGPIPE-ом, будь строк version две.
+  VERSION="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | awk 'NR == 1')"
+fi
 # Пустая версия превратила бы сверку «прокси новой версии» в «"" = ""» — ложный успех.
-[ -n "$VERSION" ] || { echo "Не прочитал version из Cargo.toml" >&2; exit 1; }
+[ -n "$VERSION" ] || { echo "Не прочитал версию SubBar" >&2; exit 1; }
 WINDOW_RE='SubBar\.app/Contents/MacOS/SubBar$'   # только окно: у службы в конце « proxy»
 LABEL="ai.subbar.proxy"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
@@ -88,7 +110,10 @@ for old in /Applications/.SubBar.new.*.app /Applications/.SubBar.previous.*.app 
   rm -rf "$old"
 done
 trap cleanup EXIT
-ditto dist/SubBar.app "$STAGED"
+ditto "$SRC_APP" "$STAGED"
+# Скачанное браузером приложение с подписью «ad-hoc» macOS не откроет («не удаётся проверить разработчика»):
+# ставит его сам человек этим скриптом — снимаем пометку «скачано из интернета».
+xattr -dr com.apple.quarantine "$STAGED" 2>/dev/null || true
 codesign --verify --strict "$STAGED"
 window_killed=1
 pkill -f "$WINDOW_RE" 2>/dev/null || true
@@ -115,7 +140,7 @@ fi
 mv "$STAGED" "$INSTALLED"
 # Путь заняли между проверкой и mv — наш бандл лёг внутрь чужого: вынуть и прерваться.
 if [ -e "$INSTALLED/$(basename "$STAGED")" ]; then
-  rm -rf "$INSTALLED/$(basename "$STAGED")"
+  rm -rf "${INSTALLED:?}/$(basename "$STAGED")"
   echo "Параллельная установка заняла $INSTALLED — прерываюсь" >&2
   rm -rf "$BACKUP"
   exit 1
@@ -157,7 +182,18 @@ if [ "$started" -eq 1 ]; then
   fi
   case ":$PATH:" in
     *":$HOME/.local/bin:"*) ;;
-    *) echo "⚠ ~/.local/bin нет в PATH — добавь в ~/.zshrc: export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2 ;;
+    *)
+      # Без этого новый терминал не знает команду claude-sub — дописать PATH в профиль оболочки, один раз.
+      case "${SHELL##*/}" in bash) RC="$HOME/.bash_profile" ;; *) RC="$HOME/.zshrc" ;; esac
+      # shellcheck disable=SC2016 # в профиль — буквальный $HOME: раскроется при старте оболочки
+      if grep -qs '\.local/bin' "$RC"; then
+        echo "⚠ ~/.local/bin прописан в $RC, но этот терминал открыт раньше — открой новое окно Терминала" >&2
+      elif printf '\n# SubBar: команда claude-sub\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$RC"; then
+        echo "==> добавил ~/.local/bin в PATH ($RC) — команда claude-sub заработает в новом окне Терминала"
+      else
+        echo "⚠ ~/.local/bin нет в PATH — добавь в $RC: export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+      fi
+      ;;
   esac
   if [ -f "$PLIST" ]; then
     echo "==> служба прокси: мягкий перезапуск на $VERSION (начатые запросы доделает — обычно до минуты, при занятой службе до нескольких минут — это не зависание)"
@@ -167,10 +203,10 @@ if [ "$started" -eq 1 ]; then
     fi
     # Путь к конфигу — как у самой службы: из её plist, а не из окружения этого терминала.
     plist_env() { /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:$1" "$PLIST" 2>/dev/null || true; }
-    P_CONF=$(plist_env SUBBAR_PROXY_CONFIG); P_DATA=$(plist_env LIMITBAR_DATA_DIR)
+    P_CONF=$(plist_env SUBBAR_PROXY_CONFIG); P_DATA=$(plist_env SUBBAR_DATA_DIR)
     if [ -n "$P_CONF" ]; then CONF="$P_CONF"
     elif [ -n "$P_DATA" ]; then CONF="$P_DATA/proxy.json"
-    else CONF="${SUBBAR_PROXY_CONFIG:-${LIMITBAR_DATA_DIR:-$HOME/Library/Application Support/SubBar}/proxy.json}"
+    else CONF="${SUBBAR_PROXY_CONFIG:-${SUBBAR_DATA_DIR:-$HOME/Library/Application Support/SubBar}/proxy.json}"
     fi
     # Порт: jq — основной источник, grep-запас только если jq недоступен или ключа нет.
     PORT=$( (command -v jq >/dev/null 2>&1 && jq -r '.port // empty' "$CONF" 2>/dev/null) || true )
@@ -209,8 +245,12 @@ if [ "$started" -eq 1 ]; then
       echo "Приложение установлено и запущено, но прокси не ответил на $VERSION за 3 минуты (сейчас: ${running:-не отвечает}) — смотри ~/Library/Logs/SubBar/proxy.log" >&2
       exit 2
     fi
+  elif [ -e "${SUBBAR_PROXY_CONFIG:-${SUBBAR_DATA_DIR:-$HOME/Library/Application Support/SubBar}/proxy.json}" ]; then
+    echo "Служба прокси выключена — включить: экран «Субагенты» в SubBar или $INSTALLED/Contents/MacOS/SubBar proxy-service on"
   else
-    echo "Служба прокси не установлена — включить: subbar proxy-service on"
+    echo
+    echo "Дальше: значок SubBar в строке меню → «+» → OpenCode Go → вставь ключ → «Добавить»."
+    echo "Ключ сам станет основным, служба прокси включится сама. Потом запускай claude-sub вместо claude."
   fi
 else
   echo "SubBar не запустился; если была предыдущая версия, она будет восстановлена" >&2

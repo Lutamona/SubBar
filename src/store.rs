@@ -4,9 +4,9 @@ use std::path::PathBuf;
 
 use crate::model::State;
 
-/// Каталог данных. `LIMITBAR_DATA_DIR` подменяет его — тесты, снимки, отдельные стенды.
+/// Каталог данных. `SUBBAR_DATA_DIR` подменяет его — тесты, снимки, отдельные стенды.
 pub fn data_dir() -> PathBuf {
-    if let Ok(custom) = std::env::var("LIMITBAR_DATA_DIR") {
+    if let Ok(custom) = std::env::var("SUBBAR_DATA_DIR") {
         if !custom.trim().is_empty() {
             return PathBuf::from(custom.trim());
         }
@@ -59,7 +59,7 @@ fn ensure_private_data_dir(dir: &std::path::Path) -> io::Result<()> {
 
     // Свой путь может указывать на домашний каталог или его родителя. Такой
     // широкий каталог молча не chmod-им — просим отдельный каталог данных.
-    let has_custom_dir = std::env::var("LIMITBAR_DATA_DIR")
+    let has_custom_dir = std::env::var("SUBBAR_DATA_DIR")
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
     if has_custom_dir {
@@ -69,13 +69,13 @@ fn ensure_private_data_dir(dir: &std::path::Path) -> io::Result<()> {
                 if home == canonical_dir || home.starts_with(&canonical_dir) {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
-                        "LIMITBAR_DATA_DIR должен указывать на отдельный каталог",
+                        "SUBBAR_DATA_DIR должен указывать на отдельный каталог",
                     ));
                 }
             }
         }
 
-        // LIMITBAR_DATA_DIR задуман для отдельного каталога состояния.
+        // SUBBAR_DATA_DIR задуман для отдельного каталога состояния.
         // Не chmod-им любой существующий каталог (например рабочее дерево)
         // только потому, что его передали по ошибке.
         let allowed = |name: &std::ffi::OsStr| {
@@ -83,7 +83,7 @@ fn ensure_private_data_dir(dir: &std::path::Path) -> io::Result<()> {
             name == "state.json"
                 || name == "state.lock"
                 // замок «одно окно» — файл самого приложения
-                || name == "limitbar.lock"
+                || name == "subbar.lock"
                 // настройки прокси лежат рядом со state.json
                 || name == "proxy.json"
                 // учёт сессий прокси пишется рядом с proxy.json
@@ -105,7 +105,7 @@ fn ensure_private_data_dir(dir: &std::path::Path) -> io::Result<()> {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!(
-                        "LIMITBAR_DATA_DIR должен быть отдельным каталогом данных: лишний файл «{}»",
+                        "SUBBAR_DATA_DIR должен быть отдельным каталогом данных: лишний файл «{}»",
                         entry.file_name().to_string_lossy()
                     ),
                 ));

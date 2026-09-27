@@ -154,6 +154,20 @@ fn redact_detected_text(text: &str, found: &model::DetectedCredential) -> String
     redact_text(text, &secrets)
 }
 
+/// Как окно: основного ключа ещё не было — первая карточка OpenCode Go становится им, а если службу прокси
+/// руками не выключали — встаёт и она.
+fn adopt_proxy_key() {
+    let accounts = store::load_state().accounts;
+    let Some(adopted) = proxy::control::adopt_first_key(&accounts) else { return };
+    println!("«{}» — основной ключ для субагентов", adopted.label);
+    if adopted.start_service {
+        match proxy::control::install_agent() {
+            Ok(()) => println!("Служба прокси включена: работает и стартует при входе"),
+            Err(e) => eprintln!("Служба прокси не включилась ({e}) — включи её на экране «Субагенты»"),
+        }
+    }
+}
+
 /// Команды терминала без окна — полный список в `subbar help`.
 /// Команды, у которых свой разбор аргументов: их «--help» общий help не перехватывает.
 const PROXY_COMMANDS: [&str; 5] = ["proxy", "proxy-config", "proxy-service", "proxy-check", "statusline"];
@@ -560,6 +574,9 @@ fn run_cli(args: &[String]) -> i32 {
                     for line in lines {
                         println!("{line}");
                     }
+                    if import {
+                        adopt_proxy_key();
+                    }
                     0
                 }
                 Err(error) => {
@@ -722,6 +739,9 @@ fn run_cli(args: &[String]) -> i32 {
                 println!("Название «{label}» уже занято — сохранил как «{final_label}»");
             }
             println!("Добавлено, id: {id}");
+            if provider == ProviderId::OpenCodeGo {
+                adopt_proxy_key();
+            }
             0
         }
         Some("link-claude") => {

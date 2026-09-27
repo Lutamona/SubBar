@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BIN = os.path.join(ROOT, "target", "release", "subbar")
-DATA = os.environ.get("LIMITBAR_DATA_DIR") or os.path.expanduser("~/Library/Application Support/SubBar")
+DATA = os.environ.get("SUBBAR_DATA_DIR") or os.path.expanduser("~/Library/Application Support/SubBar")
 MODELS = {
     "deepseek": "deepseek-v4.1-flash",
     "bunny": "space-bunny-free",

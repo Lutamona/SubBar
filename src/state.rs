@@ -828,9 +828,9 @@ mod merge_tests {
         impl Drop for DataDir {
             fn drop(&mut self) {
                 if let Some(previous) = &self.previous {
-                    std::env::set_var("LIMITBAR_DATA_DIR", previous);
+                    std::env::set_var("SUBBAR_DATA_DIR", previous);
                 } else {
-                    std::env::remove_var("LIMITBAR_DATA_DIR");
+                    std::env::remove_var("SUBBAR_DATA_DIR");
                 }
                 let _ = std::fs::remove_dir_all(&self.path);
             }
@@ -838,10 +838,10 @@ mod merge_tests {
         let path = std::env::temp_dir().join(format!("subbar-gui-sync-{}", store::new_id()));
         std::fs::create_dir(&path).unwrap();
         let guard = DataDir {
-            previous: std::env::var_os("LIMITBAR_DATA_DIR"),
+            previous: std::env::var_os("SUBBAR_DATA_DIR"),
             path,
         };
-        std::env::set_var("LIMITBAR_DATA_DIR", &guard.path);
+        std::env::set_var("SUBBAR_DATA_DIR", &guard.path);
         let mut gui = AppState::new();
         gui.form.capture(
             "Unsaved draft".into(),
@@ -1473,7 +1473,7 @@ pub fn refresh_account(id: &str) {
     let result = std::thread::Builder::new()
         // id карточек могут прийти из правленого руками файла: в видимые ОС имена
         // потоков их не пускаем — вдруг битый state положил туда ключ.
-        .name("limitbar-refresh".to_string())
+        .name("subbar-refresh".to_string())
         .spawn(move || {
             // HTTP-запросы и CLI Devin сами держат конечный потолок времени.
             // Отцепленный внутренний поток продолжал бы работать после старого сторожа на 45 с.
@@ -1541,7 +1541,7 @@ pub fn refresh_all() {
 
 pub fn detect_credentials() {
     let tx = sender();
-    let spawned = std::thread::Builder::new().name("limitbar-detect".into()).spawn(move || {
+    let spawned = std::thread::Builder::new().name("subbar-detect".into()).spawn(move || {
         // Падение поиска не должно оставить окно ждать ответа до таймаута.
         let found = std::panic::catch_unwind(providers::detect_all).unwrap_or_default();
         let _ = tx.send(WorkerEvent::DetectDone(found));

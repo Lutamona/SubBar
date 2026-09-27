@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Иконка SubBar: «S» из двух дуг. Тёплая — основная сессия на Claude, мятная — субагенты на OpenCode Go.
+       Сетка macOS: тело 824×824 со скруглением 186 и тенью в полях. PNG для сборки — assets/icon.png. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4A3AA8"/>
+      <stop offset=".55" stop-color="#2A2170"/>
+      <stop offset="1" stop-color="#15113D"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".3" cy=".18" r=".75">
+      <stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFB38A"/>
+      <stop offset="1" stop-color="#F0703F"/>
+    </linearGradient>
+    <linearGradient id="cool" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8CF5D8"/>
+      <stop offset="1" stop-color="#22C99A"/>
+    </linearGradient>
+    <filter id="body-shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000" flood-opacity=".32"/>
+    </filter>
+    <filter id="glyph-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#0B0826" flood-opacity=".45"/>
+    </filter>
+  </defs>
+  <g filter="url(#body-shadow)">
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#glow)"/>
+    <rect x="101.5" y="101.5" width="821" height="821" rx="184.5" fill="none" stroke="#fff" stroke-opacity=".10" stroke-width="3"/>
+  </g>
+  <g filter="url(#glyph-shadow)" fill="none" stroke-linecap="round" stroke-width="86">
+    <path d="M 616.2 338.6 A 118 118 0 1 0 467.8 503.4" stroke="url(#warm)"/>
+    <path d="M 556.2 520.6 A 118 118 0 1 1 407.8 685.4" stroke="url(#cool)"/>
+  </g>
+</svg>

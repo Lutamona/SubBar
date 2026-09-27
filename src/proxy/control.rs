@@ -314,7 +314,7 @@ fn install_agent_if(wanted: &dyn Fn() -> bool) -> Result<(), String> {
     std::fs::create_dir_all(plist.parent().ok_or("HOME не задан")?).map_err(|e| e.to_string())?;
     // launchd не читает профиль оболочки: переменные, которыми выбраны конфиг и каталог данных,
     // передаём службе явно — иначе она поднимется на другом proxy.json, чем видят окно и claude-sub.
-    let env: String = ["SUBBAR_PROXY_CONFIG", "LIMITBAR_DATA_DIR"]
+    let env: String = ["SUBBAR_PROXY_CONFIG", "SUBBAR_DATA_DIR"]
         .iter()
         .filter_map(|k| std::env::var_os(k).filter(|v| !v.is_empty()).map(|v| format!("<key>{k}</key><string>{}</string>", xml(&v.to_string_lossy()))))
         .collect();
@@ -381,6 +381,7 @@ fn install_agent_if(wanted: &dyn Fn() -> bool) -> Result<(), String> {
     let deadline = std::time::Instant::now() + AGENT_UP_WAIT;
     loop {
         if launchctl(&["bootstrap", &domain, &plist.to_string_lossy()]) || launchctl(&["print", &target()]) {
+            mark_service_off(false);
             return Ok(());
         }
         if std::time::Instant::now() >= deadline {
@@ -415,6 +416,7 @@ fn remove_agent_if(wanted: &dyn Fn() -> bool) -> Result<(), String> {
             Err(e) => return Err(e.to_string()),
         }
     }
+    mark_service_off(true);
     Ok(())
 }
 
@@ -652,6 +654,63 @@ pub fn load_config() -> config::ProxyConfig {
 
 pub fn save_config(cfg: &config::ProxyConfig) -> Result<(), String> {
     config::save(&config::config_path(), cfg).map_err(|e| e.to_string())
+}
+
+/// Основной ключ ещё не выбран — первая включённая карточка OpenCode Go с ключом (порядок state.json — порядок добавления).
+fn first_key(cfg: &ProxyConfig, accounts: &[crate::model::Account]) -> Option<(String, String)> {
+    if !cfg.api_key.trim().is_empty() {
+        return None;
+    }
+    accounts.iter().filter(|a| a.enabled && a.provider == crate::model::ProviderId::OpenCodeGo).find_map(|a| {
+        let key = a.credentials.get("apiKey").map(|k| k.trim()).filter(|k| !k.is_empty())?;
+        Some((a.label.clone(), key.to_string()))
+    })
+}
+
+/// Какой ключ стал основным и надо ли заодно поставить службу прокси.
+pub struct Adopted {
+    pub label: String,
+    pub start_service: bool,
+}
+
+/// Основного ключа нет, а карточка OpenCode Go уже есть — сделать её основной. Без этого новичок добавлял ключ,
+/// а субагенты молча шли в Claude, пока он сам не найдёт «основной ключ» на экране «Субагенты».
+/// Битый proxy.json не трогаем. Службы нет и руками её не выключали — её тоже пора ставить: ключ добавляют
+/// ради подмены. Признак — метка «выключили руками», а не «proxy.json ещё не было»: файл создаёт любая правка
+/// на экране «Субагенты», и новичок, покрутивший модель до ключа, оставался без службы.
+pub fn adopt_first_key(accounts: &[crate::model::Account]) -> Option<Adopted> {
+    let path = config::config_path();
+    let mut cfg = config::try_load(&path).ok()?;
+    let (label, key) = first_key(&cfg, accounts)?;
+    cfg.api_key = key;
+    cfg.account_label = label.clone();
+    config::save(&path, &cfg).ok()?;
+    // Свой каталог данных или конфиг (тесты, снимки) — службу не ставим: она одна на пользователя
+    // и переехала бы на чужой proxy.json.
+    let isolated = ["SUBBAR_DATA_DIR", "SUBBAR_PROXY_CONFIG"].iter().any(|k| std::env::var(k).is_ok_and(|v| !v.trim().is_empty()));
+    Some(Adopted { label, start_service: !isolated && !service_off_mark().exists() && !agent_installed() })
+}
+
+/// Метка «службу прокси выключили руками» (тумблер или `proxy-service off`) — рядом с proxy.json.
+fn service_off_mark() -> PathBuf {
+    config::config_path().with_file_name(".proxy-service-off")
+}
+
+/// Выключенную руками службу первый ключ OpenCode Go назад не включает. Сбой записи метки тумблер не валит:
+/// худшее — служба встанет сама при следующем первом ключе.
+fn mark_service_off(off: bool) {
+    let mark = service_off_mark();
+    if !off {
+        let _ = std::fs::remove_file(&mark);
+        return;
+    }
+    use std::os::unix::fs::OpenOptionsExt;
+    match std::fs::OpenOptions::new().create(true).append(true).mode(0o600).custom_flags(libc::O_NOFOLLOW).open(&mark) {
+        Ok(_) => {}
+        // Каталога данных нет — SubBar ещё не запускали, карточек нет, беречь нечего.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => eprintln!("SubBar: не записал метку {}: {e}", mark.display()),
+    }
 }
 
 // ─────────── фоновый опрос статуса (окно не ждёт сеть на главном потоке) ───────────
@@ -1402,6 +1461,23 @@ mod tests {
 
     fn cfg() -> ProxyConfig {
         ProxyConfig { api_key: "K2".into(), account_label: "OpenCode #2".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn first_key_only_when_none_selected() {
+        let accounts = vec![
+            crate::model::Account { credentials: Default::default(), ..opencode("Без ключа", "", 0.0, true) },
+            opencode("Выключенная", "K0", 0.0, false),
+            opencode("OpenCode #1", " K1 ", 0.0, true),
+            opencode("OpenCode #2", "K2", 0.0, true),
+        ];
+        // Ключ уже выбран — не трогаем, даже если он не первый.
+        assert_eq!(first_key(&cfg(), &accounts), None);
+        // Не выбран — первая включённая карточка с ключом, ключ без пробелов.
+        let empty = ProxyConfig { api_key: "  ".into(), account_label: String::new(), ..Default::default() };
+        assert_eq!(first_key(&empty, &accounts), Some(("OpenCode #1".to_string(), "K1".to_string())));
+        // Карточек OpenCode Go нет — нечего выбирать.
+        assert_eq!(first_key(&empty, &accounts[..2]), None);
     }
 
     fn opencode(label: &str, key: &str, used: f64, enabled: bool) -> crate::model::Account {

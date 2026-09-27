@@ -3,11 +3,11 @@
 
 use crate::{model, providers, store};
 
-/// Свой каталог данных (`LIMITBAR_DATA_DIR`: тесты, снимки) — изолированный: ни чужих аккаунтов,
+/// Свой каталог данных (`SUBBAR_DATA_DIR`: тесты, снимки) — изолированный: ни чужих аккаунтов,
 /// ни ключей из Keychain туда не кладём.
-fn isolated() -> bool {
+pub(crate) fn isolated() -> bool {
     // Как store::data_dir: одни пробелы — «не задано», иначе данные в боевом каталоге, а перенос пропущен.
-    std::env::var("LIMITBAR_DATA_DIR").is_ok_and(|d| !d.trim().is_empty())
+    std::env::var("SUBBAR_DATA_DIR").is_ok_and(|d| !d.trim().is_empty())
 }
 
 /// Нет карточки Claude — найти вход Claude Code (Keychain или файл) и добавить. В фоне: сеть и Keychain.

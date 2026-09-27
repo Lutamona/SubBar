@@ -125,7 +125,7 @@ define_class!(
         fn on_show_on_start(&self, _timer: Option<&NSObject>) {
             toggle_popover();
             #[cfg(debug_assertions)]
-            if let Ok(kind) = std::env::var("LIMITBAR_NATIVE_SELF_TEST") {
+            if let Ok(kind) = std::env::var("SUBBAR_NATIVE_SELF_TEST") {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     match kind.as_str() {
                         "form" => native_form_self_test(self),
@@ -1039,6 +1039,16 @@ fn refresh_proxy_keys(cfg: &crate::proxy::config::ProxyConfig) {
     }
 }
 
+/// Основного ключа ещё нет — сделать им первую карточку OpenCode Go, а если службу прокси руками не выключали — поставить и её.
+fn adopt_proxy_key() {
+    let accounts = state::with_app(|app| app.data.accounts.clone());
+    let Some(adopted) = crate::proxy::control::adopt_first_key(&accounts) else { return };
+    if adopted.start_service {
+        crate::proxy::control::set_service(true);
+    }
+    APP.lock().unwrap_or_else(|e| e.into_inner()).set_status(format!("«{}» — основной ключ для субагентов", adopted.label));
+}
+
 fn proxy_message(text: &str, error: bool) {
     PROXY_VIEW.with(|cell| {
         if let Some(view) = cell.borrow().as_ref() {
@@ -1247,6 +1257,7 @@ fn save_form() {
         Ok(()) => {
             close_form();
             // close_form уже пересобирает панель через sync_content.
+            adopt_proxy_key();
         }
         Err(message) => {
             FORM_VIEW.with(|view| {
@@ -1424,6 +1435,9 @@ fn poll_detection_results() {
             // копии подписчикам. Импорт — на главном потоке после этого,
             // чтобы не гоняться с `app.detected` и не импортировать старое.
             let imported = state::import_detected();
+            if imported > 0 {
+                adopt_proxy_key();
+            }
             let message = if imported > 0 {
                 format!("Добавлено: {}", crate::util::plural(imported as u64, "подписка", "подписки", "подписок"))
             } else if found_count > 0 {
@@ -1535,7 +1549,7 @@ fn native_form_self_test(controller: &UiController) {
     let isolated = data_dir
         .file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("limitbar-native-selftest."));
+        .is_some_and(|name| name.starts_with("subbar-native-selftest."));
     assert!(
         isolated && under_temp(&data_dir),
         "native self-test needs its own temporary data directory"
@@ -1650,7 +1664,7 @@ fn native_list_self_test() {
     let isolated = data_dir
         .file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with("limitbar-native-selftest."));
+        .is_some_and(|name| name.starts_with("subbar-native-selftest."));
     assert!(
         isolated && under_temp(&data_dir),
         "native self-test needs its own temporary data directory"
@@ -2607,6 +2621,11 @@ fn tick() {
 
 pub fn apply_settings() {
     update_tray();
+    // Свой каталог данных (тесты, снимки экрана) — автозапуск настоящего SubBar не трогаем:
+    // plist один на пользователя, и выключенная галка в подставном state.json снесла бы его.
+    if crate::bootstrap::isolated() {
+        return;
+    }
     let login = APP
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -2866,7 +2885,7 @@ pub fn acquire_single_instance() -> bool {
         eprintln!("[subbar] не могу создать каталог данных: {error}");
         return false;
     }
-    let lock_path = dir.join("limitbar.lock");
+    let lock_path = dir.join("subbar.lock");
     let file = match OpenOptions::new()
         .create(true)
         .write(true)
@@ -2982,23 +3001,28 @@ pub fn run() {
     crate::proxy::control::start_poller();
     seed_threshold_notices();
     crate::bootstrap::ensure_claude_account();
+    // Ключ добавили, пока окно было закрыто (или версией без автовыбора) — сделать его основным.
+    adopt_proxy_key();
     sync_content();
     // Пересобираем plist от бинаря, который запущен сейчас, чтобы
     // перенесённое приложение не указывало на старый путь установки.
     apply_settings();
     // Отмечаем старт, чтобы первый тик не обновил всё второй раз.
     AUTO_REFRESH_LAST.store(crate::store::now_ms(), Ordering::Relaxed);
-    state::refresh_all();
+    // Отладка: снимки экрана на подставных данных — сервисы не опрашивать, иначе карточки уйдут в ошибку.
+    if std::env::var("SUBBAR_NO_REFRESH").as_deref() != Ok("1") {
+        state::refresh_all();
+    }
 
     // Отладка: сразу открыть нужный экран (для скриншотов и тестов).
-    match std::env::var("LIMITBAR_SCREEN").as_deref() {
+    match std::env::var("SUBBAR_SCREEN").as_deref() {
         Ok("form") => open_form(None),
         Ok("settings") => open_settings(),
         Ok("proxy") => open_proxy(),
         _ => {}
     }
 
-    if std::env::var("LIMITBAR_OPEN_ON_START").as_deref() == Ok("1") {
+    if std::env::var("SUBBAR_OPEN_ON_START").as_deref() == Ok("1") {
         unsafe {
             objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_target_selector_userInfo_repeats(
                 0.6,
