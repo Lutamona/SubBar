@@ -846,15 +846,12 @@ fn main() {
         std::process::exit(2);
     };
     if !args.is_empty() {
-        // Иначе первая CLI-команда создаст state.json и перенос из LimitBar не случится никогда.
-        bootstrap::migrate_from_limitbar();
         std::process::exit(run_cli(&args));
     }
     if !app::acquire_single_instance() {
         eprintln!("[subbar] уже запущен — выходим");
         std::process::exit(1);
     }
-    bootstrap::migrate_from_limitbar(); // до загрузки состояния окном
     app::run();
 }
 
