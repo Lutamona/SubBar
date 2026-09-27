@@ -846,14 +846,19 @@ fn run_cli(args: &[String]) -> i32 {
                 }
             }
         }
+        Some("--version" | "-V" | "version") => {
+            println!("SubBar {}", env!("CARGO_PKG_VERSION"));
+            0
+        }
         Some("help" | "--help" | "-h") | None => {
             println!(
-                "SubBar\n\n  subbar accounts               — список подписок\n  subbar usage [id|label]       — обновить и показать лимиты\n  subbar detect [--import]      — найти входы на этом Mac\n  subbar add <provider> <label> [key=value ...]\n                                — добавить подписку (key=value — ключи и поля)\n  subbar remove <id|label>      — удалить подписку\n  subbar link-claude <id|label> — следить за токеном Claude Code\n\nСубагенты Claude на OpenCode Go:\n  subbar proxy                  — прокси (обычно служба)\n  subbar proxy-config [k=v …]   — показать/поменять настройки прокси\n  subbar proxy-check            — проверить связь: ключ, модель, время ответа\n  subbar proxy-service on|off|restart\n                                — служба прокси (автозапуск, мягкий перезапуск)\n  subbar statusline install|remove\n                                — строка «deepseek-v4.1-flash · 12 отв» внизу Claude Code\n  claude-sub                    — Claude Code через прокси\n"
+                "SubBar {}\n\n  subbar accounts              — список подписок\n  subbar usage [id|label]       — обновить и показать лимиты\n  subbar detect [--import]      — найти входы на этом Mac\n  subbar add <provider> <label> [key=value ...]\n                                — добавить подписку (key=value — ключи и поля)\n  subbar remove <id|label>      — удалить подписку\n  subbar link-claude <id|label> — следить за токеном Claude Code\n\nСубагенты Claude на OpenCode Go:\n  subbar proxy                  — прокси (обычно служба)\n  subbar proxy-config [k=v …]   — показать/поменять настройки прокси\n  subbar proxy-check            — проверить связь: ключ, модель, время ответа\n  subbar proxy-service on|off|restart\n                                — служба прокси (автозапуск, мягкий перезапуск)\n  subbar statusline install|remove\n                                — строка «deepseek-v4.1-flash · 12 отв» внизу Claude Code\n  claude-sub                    — Claude Code через прокси\n",
+                env!("CARGO_PKG_VERSION")
             );
             0
         }
-        Some(_) => {
-            eprintln!("Неизвестная команда");
+        Some(other) => {
+            eprintln!("Неизвестная команда «{other}» — список команд: subbar help");
             1
         }
     }

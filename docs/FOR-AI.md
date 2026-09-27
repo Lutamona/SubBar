@@ -46,7 +46,8 @@ echo "PID $!"
 `~/.local/bin` не было в PATH — установщик сам допишет его в `~/.zshrc` (у bash — в `~/.bash_profile`) и скажет об
 этом. Тогда `claude-sub` заработает в **новом** окне Терминала — передай это пользователю.
 
-Проверка: `ls -l ~/.local/bin/claude-sub` и `pgrep -fl "SubBar.app/Contents/MacOS/SubBar"`.
+Проверка: `/Applications/SubBar.app/Contents/MacOS/SubBar --version` (напечатает `SubBar <версия>`),
+`ls -l ~/.local/bin/claude-sub` и `pgrep -fl "SubBar.app/Contents/MacOS/SubBar"`.
 
 macOS может показать окно доступа к связке ключей «Claude Code-credentials» — скажи пользователю нажать
 «Разрешить всегда».
@@ -136,7 +137,7 @@ curl -s 127.0.0.1:8479/_subbar/status | head -c 400; echo
 | `прокси SubBar не запущен` | `/Applications/SubBar.app/Contents/MacOS/SubBar proxy-service restart` |
 | `прокси SubBar не отвечает — запросы сессии не проходят` | то же `proxy-service restart`; не помогло — перезапустить `claude-sub` |
 | `подмена выключена` | `… proxy-config enabled=true` или переключатель «Подмена» в окне |
-| `нет ключа OpenCode` | добавить карточку OpenCode Go (шаг 2) |
+| `нет ключа OpenCode Go` | добавить карточку OpenCode Go (шаг 2) |
 | `… · N в Claude` растёт | OpenCode не отвечает/лимит; смотреть `tail -50 ~/Library/Logs/SubBar/proxy.log` |
 | `claude-sub: command not found` | новое окно Терминала; не помогло — `~/.local/bin` нет в PATH (шаг 1) |
 | «не удаётся проверить разработчика» | `xattr -dr com.apple.quarantine /Applications/SubBar.app` (ставили вручную из архива) |
