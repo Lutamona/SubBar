@@ -6,6 +6,8 @@ your main Claude Code session stays on your Claude subscription byte-for-byte, w
 the request falls back to real Claude, so work never stops. The menu bar also shows limits for Claude,
 ChatGPT/Codex, OpenCode Go, Command Code, Devin and any service with a JSON API.
 
+<p align="center"><img src="docs/images/demo.gif" alt="Demo: Claude hands a search to three haiku subagents running on OpenCode Go" width="100%"></p>
+
 ## Install (macOS 13+, Apple Silicon or Intel)
 
 ```bash

@@ -9,15 +9,15 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-F0703F?style=flat-square" alt="Лицензия MIT"></a>
 </p>
 
+<p align="center">
+  <img src="docs/images/demo.gif" alt="Демо: Claude раздаёт поиск трём субагентам haiku, они работают на OpenCode Go, строка SubBar внизу считает их ответы" width="100%">
+</p>
+
 [English](README.en.md) · **Поставить за минуту** — вставь в Терминал (дальше [по шагам](#установка)):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Lutamona/SubBar/main/scripts/get.sh | bash
 ```
-
-<p align="center">
-  <img src="docs/images/demo.gif" alt="Демо: Claude раздаёт поиск трём субагентам haiku, они работают на OpenCode Go, строка SubBar внизу считает их ответы" width="100%">
-</p>
 
 ## Зачем это
 
