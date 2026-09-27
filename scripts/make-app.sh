@@ -40,6 +40,16 @@ fi
 
 if [ "$UNIVERSAL" -eq 1 ]; then
   mkdir -p "$OUT"
+  # Бинарь релиза уходит чужим людям — пути сборки в него не зашиваем: сообщения о панике зависимостей несли бы
+  # домашний каталог собравшего (~/.cargo/registry/…). CARGO_ENCODED_RUSTFLAGS — чтобы путь с пробелом
+  # не рассыпался на аргументы; свои RUSTFLAGS собирающего сохраняются.
+  US=$'\x1f'
+  FLAGS="${CARGO_ENCODED_RUSTFLAGS:-}"
+  if [ -z "$FLAGS" ] && [ -n "${RUSTFLAGS:-}" ]; then
+    read -ra OWN_FLAGS <<< "$RUSTFLAGS"
+    FLAGS="$(IFS="$US"; echo "${OWN_FLAGS[*]}")"
+  fi
+  export CARGO_ENCODED_RUSTFLAGS="${FLAGS:+$FLAGS$US}--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo$US--remap-path-prefix=$PWD=/subbar"
   for triple in $TRIPLES; do
     echo "==> cargo build --release --target $triple"
     # Нижняя версия macOS — как в Info.plist, а не умолчание целевой платформы.
